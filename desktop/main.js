@@ -93,6 +93,16 @@ const LAUNCH_APP_TOOL = {
   }
 };
 
+const OPEN_WEBSITE_TOOL = {
+  name: 'open_website',
+  description: "Open a website in the user's default browser (e.g. YouTube, a streaming site, Gmail).",
+  input_schema: {
+    type: 'object',
+    properties: { url: { type: 'string', description: 'Full URL to open, including https://' } },
+    required: ['url']
+  }
+};
+
 async function callClaude(messages, system) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -106,7 +116,7 @@ async function callClaude(messages, system) {
       max_tokens: 700,
       system,
       messages,
-      tools: [LAUNCH_APP_TOOL]
+      tools: [LAUNCH_APP_TOOL, OPEN_WEBSITE_TOOL]
     })
   });
   return res.json();
@@ -147,9 +157,21 @@ ipcMain.handle('ask-jarvis', async (event, { text }) => {
     if (data.error) return { error: data.error.message || 'Claude API error' };
 
     let toolUse = (data.content || []).find((b) => b.type === 'tool_use');
-    if (toolUse && toolUse.name === 'launch_app') {
-      const result = await launchAllowedApp(toolUse.input.name);
-      const toolResultText = result.ok ? `Launched ${toolUse.input.name}.` : `Could not launch: ${result.error}`;
+    if (toolUse) {
+      let toolResultText;
+      if (toolUse.name === 'launch_app') {
+        const result = await launchAllowedApp(toolUse.input.name);
+        toolResultText = result.ok ? `Launched ${toolUse.input.name}.` : `Could not launch: ${result.error}`;
+      } else if (toolUse.name === 'open_website') {
+        try {
+          await shell.openExternal(toolUse.input.url);
+          toolResultText = `Opened ${toolUse.input.url}.`;
+        } catch (e) {
+          toolResultText = `Could not open that site: ${String(e.message || e)}`;
+        }
+      } else {
+        toolResultText = 'Unknown tool.';
+      }
       messages.push({ role: 'assistant', content: data.content });
       messages.push({
         role: 'user',

@@ -34,31 +34,44 @@ by request; voice is the only input everywhere else for now.
    - `elevenLabsVoiceId` — defaults to "Daniel" (British, formal, steady)
    - `weather` — defaults to Cairo, edit lat/lon for your city
    - `allowedApps` — apps Jarvis is allowed to actually launch (see below)
+   - `organizableFolders` — folders Jarvis is allowed to tidy up (list/move/rename, never delete)
 4. `npm start`
 
 Both API calls happen in the main process — your keys never touch the renderer, so they
 can't leak through dev tools or a compromised page.
 
 ## What's real right now
-- HUD dashboard with live clock and live weather (Open-Meteo, no key needed)
+- HUD dashboard with live clock, live weather (Open-Meteo, no key needed), and live CPU/RAM stats
 - Real speech-to-speech: continuous mic listening → Claude → ElevenLabs voice → played back,
   with the mic muted while Jarvis is talking so he doesn't hear himself
 - **Voice-activity detection**: Jarvis notices when you start talking and begins the
   conversation automatically — no click required
-- **Desktop control that's actually wired in**: Jarvis has a `launch_app` tool. Ask him to
-  open something in your `allowedApps` list and he decides to do it as part of the
-  conversation — this isn't a button sitting unused, it's live. He'll only ever launch
-  something you've explicitly listed in `config.json`; if you ask for anything else, he'll
-  tell you it isn't allowed yet instead of pretending he can't do anything.
-- A standing "prefer free" rule in his personality: when a task could be done a free way or
-  a paid way, he defaults to free and just does it, and only pauses to ask before using
-  anything paid.
+- **Desktop control that's actually wired in, not just described**:
+  - `launch_app` — opens apps you've explicitly allow-listed in `config.json`
+  - `open_website` — opens a URL in your default browser
+  - `fetch_webpage` — reads and summarizes a specific page you give him a link to (this is
+    *not* a search engine — he can't look things up without a URL, only read a page you name)
+  - `organize_files` — lists, moves, or renames files, but **only** inside folders listed in
+    `organizableFolders`, and it will **never delete anything**
+  - `media_control` / `get_now_playing` — best-effort play/pause/skip and track info.
+    Reliable on macOS with Spotify or Music open; play/pause/skip work on Windows via the
+    OS media-key signal; Linux needs `playerctl` installed. "What's playing" isn't available
+    on Windows yet.
+  - `start_screen_recording` / `stop_screen_recording` — captures your screen via the OS
+    picker and saves a `.webm` to `~/JarvisRecordings`. **Caveat worth testing**: Chromium
+    normally requires a recent click/keypress before it'll open the screen-share picker.
+    Since this is triggered by voice, it's possible the OS blocks it if there's been no
+    recent physical interaction — if it doesn't work by voice alone, that's a real platform
+    constraint, not a bug, and clicking the ring right before asking may be the workaround.
+- A standing "prefer free" rule in his personality: free options get used automatically;
+  anything paid he doesn't already have a key for gets asked about first.
 
 ## Not built yet
 - Packaging into a one-click installer (.exe / .dmg) — right now this runs via `npm start`
 - School mode (Ctrl+Enter sidebar)
-- Broader desktop actions beyond launching allow-listed apps (file organization, etc.) —
-  same safety pattern (explicit allow-list, never a free-form command) would extend to these
+- General web search (only reading a specific URL is wired in — search needs a paid API key)
+- Speaker-specific voice recognition — voice detection reacts to any sufficiently loud
+  voice/sound, not specifically yours
 
 ## Repo
-This repo is now public — https://github.com/HamzaR164/jarvis
+Full history and the earlier web-preview version: https://github.com/HamzaR164/jarvis

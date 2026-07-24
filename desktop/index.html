@@ -39,6 +39,7 @@
   .avatar-wrap[data-state="listening"] .ring-arc{animation-duration:3.2s;stroke:#7dfcff;opacity:1;}
   .avatar-wrap[data-state="thinking"] .ring-arc{animation-duration:1.8s;opacity:1;}
   .avatar-wrap[data-state="speaking"] .ring-arc{animation-duration:.9s;stroke:#a7ffef;opacity:1;}
+  .avatar-wrap[data-state="recording"] .ring-arc{animation-duration:1.2s;stroke:var(--danger);opacity:1;}
   .ring-core{fill:var(--panel-2);stroke:var(--cyan-soft);stroke-width:1;}
   .core-glow{position:absolute;inset:46px;border-radius:50%;background:radial-gradient(circle, rgba(34,211,238,0.18) 0%, transparent 70%);animation:pulse 3.4s ease-in-out infinite;}
   .avatar-wrap[data-state="listening"] .core-glow{animation-duration:1.4s;}
@@ -51,12 +52,13 @@
   @keyframes pulse{0%,100%{opacity:.5;transform:scale(1);}50%{opacity:1;transform:scale(1.08);}}
   @keyframes float{0%,100%{transform:translate(0,0);opacity:.3;}50%{transform:translate(4px,-8px);opacity:.9;}}
 
-  .widgets{display:flex;flex-direction:column;align-items:center;gap:8px;transition:opacity .35s ease, transform .35s ease, max-height .35s ease;max-height:200px;opacity:1;}
+  .widgets{display:flex;flex-direction:column;align-items:center;gap:6px;transition:opacity .35s ease, transform .35s ease, max-height .35s ease;max-height:220px;opacity:1;}
   .widgets.hidden{opacity:0;transform:translateY(14px);max-height:0;pointer-events:none;}
   .clock{font-family:var(--font-d);font-size:52px;font-weight:700;letter-spacing:2px;line-height:1;text-shadow:0 0 18px var(--cyan-soft);}
   .date{font-size:12px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;}
   .weather{display:flex;align-items:center;gap:10px;font-family:var(--font-d);font-size:13px;color:var(--muted);margin-top:4px;}
   .weather b{color:var(--text);font-size:16px;}
+  .stats{font-family:var(--font-d);font-size:10.5px;color:var(--muted);letter-spacing:.5px;margin-top:2px;}
 
   .hint{font-size:11px;color:var(--muted);letter-spacing:.5px;margin-top:2px;transition:opacity .3s;}
   .widgets.hidden ~ .hint{opacity:0;}
@@ -91,6 +93,7 @@
     <div class="clock" id="clock">--:--:--</div>
     <div class="date" id="dateLine">loading date</div>
     <div class="weather" id="weatherLine"><b id="weatherTemp">--°</b><span id="weatherSub">loading weather</span></div>
+    <div class="stats" id="statsLine">CPU --% · RAM --GB</div>
   </div>
   <div class="hint">just start talking — or click Jarvis</div>
 </div>
@@ -113,6 +116,15 @@ async function loadWeather(){
   document.getElementById('weatherSub').textContent = w.label + ' · ' + (WMO[w.code]||'—') + ' · H' + w.hi + '° L' + w.lo + '°';
 }
 loadWeather(); setInterval(loadWeather, 15*60*1000);
+
+async function loadStats(){
+  try{
+    const s = await window.jarvis.systemStats();
+    if (s.error) return;
+    document.getElementById('statsLine').textContent = `CPU ${s.cpuPct}% · RAM ${s.usedMemGB}/${s.totalMemGB}GB`;
+  }catch(e){}
+}
+loadStats(); setInterval(loadStats, 5000);
 
 (async () => {
   const ok = await window.jarvis.hasConfig();
@@ -203,7 +215,6 @@ async function handleTurn(text){
 }
 
 // ---- voice-activity detection: notices when you start talking, no click needed ----
-// If it triggers too easily (background noise) or not easily enough, tune VAD_THRESHOLD below.
 let vadAnalyser = null, vadData = null, voiceFrames = 0;
 const VAD_THRESHOLD = 22;
 const VAD_SUSTAIN_FRAMES = 8;
@@ -222,7 +233,6 @@ async function initVAD(){
     caption('Mic permission needed for voice detection — click Jarvis to talk instead');
   }
 }
-
 function vadLoop(){
   if (vadAnalyser && !conversing){
     vadAnalyser.getByteTimeDomainData(vadData);
@@ -239,6 +249,51 @@ function vadLoop(){
   requestAnimationFrame(vadLoop);
 }
 initVAD();
+
+// ---- screen recording: triggered by Jarvis via voice, captured here in the renderer ----
+function arrayBufferToBase64(buffer){
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  for (let i=0;i<bytes.length;i+=chunkSize){
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i+chunkSize));
+  }
+  return btoa(binary);
+}
+
+let mediaRecorder = null, recordedChunks = [], recordingStream = null;
+
+window.jarvis.onStartRecording(async () => {
+  if (mediaRecorder && mediaRecorder.state === 'recording'){ caption('Already recording'); return; }
+  try{
+    recordingStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+    recordedChunks = [];
+    mediaRecorder = new MediaRecorder(recordingStream, { mimeType: 'video/webm;codecs=vp9' });
+    mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
+    mediaRecorder.onstop = async () => {
+      const blob = new Blob(recordedChunks, { type: 'video/webm' });
+      const buf = await blob.arrayBuffer();
+      const base64 = arrayBufferToBase64(buf);
+      const res = await window.jarvis.saveRecording(base64);
+      caption(res.ok ? `Recording saved: ${res.path}` : `Recording failed to save: ${res.error}`);
+      if (recordingStream) recordingStream.getTracks().forEach(t => t.stop());
+      if (document.getElementById('avatar').dataset.state === 'recording') setAvatarState('idle', conversing ? 'listening' : 'listening for you');
+    };
+    mediaRecorder.start();
+    setAvatarState('recording');
+    caption('Recording started');
+  }catch(e){
+    caption('Could not start recording — the OS may have blocked the picker: ' + (e.message || e));
+  }
+});
+
+window.jarvis.onStopRecording(() => {
+  if (mediaRecorder && mediaRecorder.state === 'recording'){
+    mediaRecorder.stop();
+  } else {
+    caption('No recording in progress');
+  }
+});
 </script>
 </body>
 </html>

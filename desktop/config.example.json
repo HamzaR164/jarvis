@@ -10,5 +10,9 @@
   "allowedApps": {
     "Calculator": { "mac": "Calculator", "win": "calc", "linux": "gnome-calculator" },
     "Notes": { "mac": "Notes", "win": "notepad", "linux": "gedit" }
+  },
+  "organizableFolders": {
+    "downloads": "~/Downloads",
+    "desktop": "~/Desktop"
   }
 }

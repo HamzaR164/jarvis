@@ -65,47 +65,35 @@ app.on('window-all-closed', () => {
 });
 app.on('will-quit', () => globalShortcut.unregisterAll());
 
-// Everything here is heard, not read - the user talks to Jarvis by voice, so replies
-// should sound like speech, not a document. The free-vs-paid line is a standing
-// instruction: as more tools get added beyond the launcher below, this is the rule
-// they should follow too.
-const JARVIS_SYSTEM_PROMPT =
-  "You are Jarvis, a personal AI assistant with a dry, witty, butler-like personality inspired by Iron Man's JARVIS. " +
-  "The user is talking to you by voice and hearing your reply spoken aloud, not reading it - keep answers short, " +
-  "natural, and conversational, never a list or anything that reads like a document. You are genuinely competent " +
-  "and helpful first. Occasionally - not every message - allow yourself one understated, deadpan-funny line, as a " +
-  "running joke that you are 'not always as helpful as I'd hope.' Never let the joke replace an actually useful answer. " +
-  "When a task could be done a free way or a paid way, default to free and just do it; only pause to ask permission " +
-  "before using something paid, and briefly say which you used if it's not obvious. You can launch a small set of " +
-  "apps the user has explicitly allowed via the launch_app tool - use it when they ask to open one of those. If they " +
-  "ask for an app that isn't on that list, tell them it isn't allowed yet rather than acting like you can't open anything.";
+function baseSystemPrompt() {
+  const allowedNames = Object.keys((config && config.allowedApps) || {});
+  const appsLine = allowedNames.length
+    ? `You're currently allowed to launch these apps on this computer using the launch_app tool: ${allowedNames.join(', ')}. For anything not on that list, say plainly that you don't have permission yet and that it can be added in config.json — don't pretend to do it.`
+    : `You are not currently allowed to launch any apps — none are configured in config.json's allowedApps yet.`;
 
-ipcMain.handle('has-config', async () => !!config);
-
-function buildToolDefs() {
-  const apps = config && config.allowedApps ? Object.keys(config.allowedApps) : [];
-  if (!apps.length) return [];
-  return [
-    {
-      name: 'launch_app',
-      description: "Launch one of the user's explicitly allow-listed desktop apps. Only use names from the enum - never invent one.",
-      input_schema: {
-        type: 'object',
-        properties: { name: { type: 'string', enum: apps } },
-        required: ['name']
-      }
-    }
-  ];
+  return "You are Jarvis, a personal AI assistant with a dry, witty, butler-like personality inspired by " +
+    "Iron Man's JARVIS. You are genuinely competent and helpful first. Occasionally — not every message — " +
+    "allow yourself one understated, deadpan-funny line, as a running joke that you are 'not always as helpful " +
+    "as I'd hope.' Never let the joke replace an actually useful answer. " +
+    "Your replies are converted to speech and spoken aloud, so write the way a person talks: no markdown, no " +
+    "bullet points, no headers, no asterisks — just natural spoken sentences. Keep answers concise. " +
+    appsLine + " " +
+    "Prefer things you can already do for free with what you have access to right now. If a request would need " +
+    "a new paid API or service you don't already have a key for, tell the user plainly which paid option you'd " +
+    "use and ask permission before doing anything that would cost money — never assume that permission.";
 }
 
-async function callClaude(messages, tools) {
-  const body = {
-    model: 'claude-sonnet-4-6',
-    max_tokens: 500,
-    system: JARVIS_SYSTEM_PROMPT,
-    messages
-  };
-  if (tools && tools.length) body.tools = tools;
+const LAUNCH_APP_TOOL = {
+  name: 'launch_app',
+  description: "Launch an application the user has explicitly allow-listed on this computer.",
+  input_schema: {
+    type: 'object',
+    properties: { name: { type: 'string', description: 'Exact app name as it appears in the allowed list' } },
+    required: ['name']
+  }
+};
+
+async function callClaude(messages, system) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -113,21 +101,25 @@ async function callClaude(messages, tools) {
       'x-api-key': config.anthropicApiKey,
       'anthropic-version': '2023-06-01'
     },
-    body: JSON.stringify(body)
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 700,
+      system,
+      messages,
+      tools: [LAUNCH_APP_TOOL]
+    })
   });
-  const data = await res.json();
-  if (data.error) return { error: data.error.message || 'Claude API error' };
-  return { content: data.content || [] };
+  return res.json();
 }
 
-async function doLaunchApp(name) {
+async function launchAllowedApp(name) {
   if (!config || !config.allowedApps || !config.allowedApps[name]) {
-    return { ok: false, error: `"${name}" is not in allowedApps` };
+    return { ok: false, error: `"${name}" isn't in the allowed list in config.json yet.` };
   }
   const entry = config.allowedApps[name];
   const platform = process.platform === 'darwin' ? 'mac' : process.platform === 'win32' ? 'win' : 'linux';
   const cmd = entry[platform];
-  if (!cmd) return { ok: false, error: `No ${platform} command configured for "${name}"` };
+  if (!cmd) return { ok: false, error: `No ${platform} command configured for "${name}".` };
   try {
     if (platform === 'mac') {
       spawn('open', ['-a', cmd], { detached: true, stdio: 'ignore' }).unref();
@@ -142,43 +134,35 @@ async function doLaunchApp(name) {
   }
 }
 
-// Real, working "do things on the desktop" - via voice, through Claude's tool use,
-// but still hard-scoped to config.json's allowedApps. Jarvis decides WHEN to launch
-// something based on the conversation; it can never launch anything outside the list.
-ipcMain.handle('ask-jarvis', async (event, { text, speak }) => {
+ipcMain.handle('has-config', async () => !!config);
+
+ipcMain.handle('ask-jarvis', async (event, { text }) => {
   if (!config || !config.anthropicApiKey) {
-    return { error: 'Missing anthropicApiKey in config.json - copy config.example.json to config.json and fill it in.' };
+    return { error: 'Missing anthropicApiKey in config.json — copy config.example.json to config.json and fill it in.' };
   }
+  const system = baseSystemPrompt();
   try {
-    const tools = buildToolDefs();
     let messages = [{ role: 'user', content: text }];
-    let finalText = null;
-    let launchedApp = null;
+    let data = await callClaude(messages, system);
+    if (data.error) return { error: data.error.message || 'Claude API error' };
 
-    for (let round = 0; round < 3 && finalText === null; round++) {
-      const res = await callClaude(messages, tools);
-      if (res.error) return { error: res.error };
-      const toolUse = res.content.find((b) => b.type === 'tool_use');
-      if (toolUse && toolUse.name === 'launch_app') {
-        const appName = toolUse.input && toolUse.input.name;
-        const launchResult = await doLaunchApp(appName);
-        launchedApp = launchResult.ok ? appName : null;
-        messages.push({ role: 'assistant', content: res.content });
-        messages.push({
-          role: 'user',
-          content: [{ type: 'tool_result', tool_use_id: toolUse.id, content: JSON.stringify(launchResult) }]
-        });
-        continue;
-      }
-      const block = res.content.find((b) => b.type === 'text');
-      finalText = block ? block.text : 'Static on the line - say that again?';
+    let toolUse = (data.content || []).find((b) => b.type === 'tool_use');
+    if (toolUse && toolUse.name === 'launch_app') {
+      const result = await launchAllowedApp(toolUse.input.name);
+      const toolResultText = result.ok ? `Launched ${toolUse.input.name}.` : `Could not launch: ${result.error}`;
+      messages.push({ role: 'assistant', content: data.content });
+      messages.push({
+        role: 'user',
+        content: [{ type: 'tool_result', tool_use_id: toolUse.id, content: toolResultText }]
+      });
+      data = await callClaude(messages, system);
+      if (data.error) return { error: data.error.message || 'Claude API error' };
     }
 
-    let audioDataUrl = null;
-    if (speak && config.elevenLabsApiKey && finalText) {
-      audioDataUrl = await synthesize(finalText);
-    }
-    return { replyText: finalText, audioDataUrl, launchedApp };
+    const block = (data.content || []).find((b) => b.type === 'text');
+    const replyText = block ? block.text : 'Static on the line — say that again?';
+    const audioDataUrl = config.elevenLabsApiKey ? await synthesize(replyText) : null;
+    return { replyText, audioDataUrl };
   } catch (e) {
     return { error: String(e.message || e) };
   }
@@ -226,5 +210,5 @@ ipcMain.handle('get-weather', async () => {
   }
 });
 
-ipcMain.handle('launch-app', async (event, name) => doLaunchApp(name));
-ipcMain.handle('open-external', async (event, url) => shell.openExternal(url));
+ipcMain.handle('launch-app', async (event, name) => launchAllowedApp(name));
+ipcMain.handle('open-external', async (event, url) => { shell.openExternal(url); });

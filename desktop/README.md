@@ -16,7 +16,7 @@ no buttons, no menus, no chat window.
 
 Click the ring. The clock and weather slide away, Jarvis starts listening, and you just
 talk — no push-to-talk, no re-clicking between sentences. He answers out loud. Click the
-ring again (or go quiet for 45s) and it ends, and the clock/weather slide back in.
+ring again and it ends, and the clock/weather slide back in.
 
 The only exception is **school mode** (text-only, silent, Ctrl+Enter) — coming back later
 by request; voice is the only input everywhere else for now.
@@ -57,4 +57,4 @@ can't leak through dev tools or a compromised page.
   same safety pattern (explicit allow-list, never a free-form command) would extend to these
 
 ## Repo
-Full history and the earlier web-preview version: https://github.com/HamzaR164/jarvis
+Full history and the earlier web-preview version, and this same desktop app: https://github.com/HamzaR164/jarvis

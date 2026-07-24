@@ -14,9 +14,12 @@ an internet connection.
 Open the app: you see the HUD ring, the clock, the date, and the weather. Nothing else —
 no buttons, no menus, no chat window.
 
-Click the ring. The clock and weather slide away, Jarvis starts listening, and you just
-talk — no push-to-talk, no re-clicking between sentences. He answers out loud. Click the
-ring again and it ends, and the clock/weather slide back in.
+Just start talking. Jarvis detects your voice automatically (via a volume-based listener,
+not a click) — the clock and weather slide away, and you're in a live conversation, no
+re-clicking between sentences. He answers out loud. You can also click the ring to start
+or end a conversation manually — useful in a noisy room, or if the automatic detection
+isn't reliable on your mic/setup (tune `VAD_THRESHOLD` near the bottom of `index.html` if
+it triggers too easily or not easily enough).
 
 The only exception is **school mode** (text-only, silent, Ctrl+Enter) — coming back later
 by request; voice is the only input everywhere else for now.
@@ -40,6 +43,8 @@ can't leak through dev tools or a compromised page.
 - HUD dashboard with live clock and live weather (Open-Meteo, no key needed)
 - Real speech-to-speech: continuous mic listening → Claude → ElevenLabs voice → played back,
   with the mic muted while Jarvis is talking so he doesn't hear himself
+- **Voice-activity detection**: Jarvis notices when you start talking and begins the
+  conversation automatically — no click required
 - **Desktop control that's actually wired in**: Jarvis has a `launch_app` tool. Ask him to
   open something in your `allowedApps` list and he decides to do it as part of the
   conversation — this isn't a button sitting unused, it's live. He'll only ever launch
@@ -52,9 +57,8 @@ can't leak through dev tools or a compromised page.
 ## Not built yet
 - Packaging into a one-click installer (.exe / .dmg) — right now this runs via `npm start`
 - School mode (Ctrl+Enter sidebar)
-- Always-on wake word without clicking the ring — still needs a dedicated wake-word engine
 - Broader desktop actions beyond launching allow-listed apps (file organization, etc.) —
   same safety pattern (explicit allow-list, never a free-form command) would extend to these
 
 ## Repo
-Full history and the earlier web-preview version, and this same desktop app: https://github.com/HamzaR164/jarvis
+This repo is now public — https://github.com/HamzaR164/jarvis

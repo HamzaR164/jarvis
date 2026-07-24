@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <title>Jarvis</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root{
     --void:#05070d; --panel-2:#0d1728;
@@ -15,7 +15,7 @@
   *{box-sizing:border-box;margin:0;padding:0;}
   html,body{height:100%;}
   body{
-    background:radial-gradient(ellipse at 50% 0%, #0b1730 0%, var(--void) 60%), var(--void);
+    background:radial-gradient(ellipse at 50% 40%, #0b1730 0%, var(--void) 65%), var(--void);
     color:var(--text);font-family:var(--font-b);overflow:hidden;position:relative;
   }
   body::before{
@@ -24,11 +24,11 @@
       repeating-linear-gradient(90deg, rgba(255,255,255,0.015) 0px, transparent 1px, transparent 3px);
     pointer-events:none;z-index:0;
   }
-  .drag-strip{position:fixed;top:0;left:0;right:0;height:28px;-webkit-app-region:drag;z-index:2;}
+  .drag-region{position:fixed;top:0;left:0;right:0;height:28px;-webkit-app-region:drag;z-index:2;}
 
   #app{position:relative;z-index:1;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;}
 
-  .avatar-wrap{position:relative;width:250px;height:250px;cursor:pointer;-webkit-app-region:no-drag;transition:transform .4s ease;}
+  .avatar-wrap{position:relative;width:260px;height:260px;cursor:pointer;transition:transform .3s ease;}
   .avatar-wrap:hover{transform:scale(1.02);}
   .avatar-svg{width:100%;height:100%;overflow:visible;}
   .ring-tick{fill:none;stroke:var(--line);stroke-width:1;stroke-dasharray:1 7.4;}
@@ -36,46 +36,43 @@
   .ring-arc{fill:none;stroke:var(--cyan);stroke-width:2.4;stroke-linecap:round;stroke-dasharray:70 300;
     opacity:.85;animation:spin 6s linear infinite;transform-origin:100px 100px;filter:drop-shadow(0 0 4px var(--cyan));}
   .avatar-wrap[data-state="idle"] .ring-arc{animation-duration:14s;opacity:.5;}
-  .avatar-wrap[data-state="listening"] .ring-arc{animation-duration:3.5s;stroke:#7dfcff;opacity:1;}
-  .avatar-wrap[data-state="thinking"] .ring-arc{animation-duration:2s;opacity:1;}
-  .avatar-wrap[data-state="speaking"] .ring-arc{animation-duration:1s;stroke:#a7ffef;opacity:1;}
+  .avatar-wrap[data-state="listening"] .ring-arc{animation-duration:3.2s;stroke:#7dfcff;opacity:1;}
+  .avatar-wrap[data-state="thinking"] .ring-arc{animation-duration:1.8s;opacity:1;}
+  .avatar-wrap[data-state="speaking"] .ring-arc{animation-duration:.9s;stroke:#a7ffef;opacity:1;}
   .ring-core{fill:var(--panel-2);stroke:var(--cyan-soft);stroke-width:1;}
-  .core-glow{position:absolute;inset:44px;border-radius:50%;background:radial-gradient(circle, rgba(34,211,238,0.16) 0%, transparent 70%);animation:pulse 3.4s ease-in-out infinite;}
-  .avatar-wrap[data-state="listening"] .core-glow,.avatar-wrap[data-state="speaking"] .core-glow{animation-duration:1.1s;}
-  .avatar-label{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;}
-  .avatar-state{font-family:var(--font-d);font-size:10px;letter-spacing:2px;color:var(--cyan);opacity:.75;text-transform:uppercase;}
-  .particle{position:absolute;width:3px;height:3px;border-radius:50%;background:var(--cyan);opacity:.7;animation:float 5s ease-in-out infinite;}
+  .core-glow{position:absolute;inset:46px;border-radius:50%;background:radial-gradient(circle, rgba(34,211,238,0.18) 0%, transparent 70%);animation:pulse 3.4s ease-in-out infinite;}
+  .avatar-wrap[data-state="listening"] .core-glow{animation-duration:1.4s;}
+  .avatar-wrap[data-state="speaking"] .core-glow{animation-duration:.8s;}
+  .avatar-label{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;pointer-events:none;}
+  .avatar-title{font-family:var(--font-d);font-size:22px;letter-spacing:3px;}
+  .avatar-state{font-family:var(--font-d);font-size:9px;letter-spacing:2px;color:var(--cyan);opacity:.8;text-transform:uppercase;}
+  .particle{position:absolute;width:3px;height:3px;border-radius:50%;background:var(--cyan);opacity:.7;animation:float 5s ease-in-out infinite;pointer-events:none;}
   @keyframes spin{to{transform:rotate(360deg);}}
   @keyframes pulse{0%,100%{opacity:.5;transform:scale(1);}50%{opacity:1;transform:scale(1.08);}}
   @keyframes float{0%,100%{transform:translate(0,0);opacity:.3;}50%{transform:translate(4px,-8px);opacity:.9;}}
 
-  .idle-info{display:flex;flex-direction:column;align-items:center;gap:22px;transition:opacity .45s ease, transform .45s ease, max-height .45s ease;max-height:260px;}
-  .idle-info.hidden{opacity:0;transform:translateY(-16px);max-height:0;pointer-events:none;overflow:hidden;}
-  .clock{font-family:var(--font-d);font-size:58px;font-weight:700;letter-spacing:2px;line-height:1;text-shadow:0 0 18px var(--cyan-soft);}
-  .date{font-size:12.5px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-top:6px;}
-  .weather{display:flex;align-items:center;gap:18px;background:linear-gradient(180deg, rgba(13,23,40,0.85), rgba(10,17,31,0.85));
-    border:1px solid var(--line);border-radius:14px;padding:16px 28px;backdrop-filter:blur(6px);min-width:220px;}
-  .weather h4{font-family:var(--font-d);font-size:10px;letter-spacing:1.5px;color:var(--cyan);text-transform:uppercase;margin-bottom:4px;}
-  .weather-temp{font-family:var(--font-d);font-size:30px;font-weight:700;}
-  .weather-sub{font-size:12px;color:var(--muted);margin-top:2px;}
+  .widgets{display:flex;flex-direction:column;align-items:center;gap:8px;transition:opacity .35s ease, transform .35s ease, max-height .35s ease;max-height:200px;opacity:1;}
+  .widgets.hidden{opacity:0;transform:translateY(14px);max-height:0;pointer-events:none;}
+  .clock{font-family:var(--font-d);font-size:52px;font-weight:700;letter-spacing:2px;line-height:1;text-shadow:0 0 18px var(--cyan-soft);}
+  .date{font-size:12px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;}
+  .weather{display:flex;align-items:center;gap:10px;font-family:var(--font-d);font-size:13px;color:var(--muted);margin-top:4px;}
+  .weather b{color:var(--text);font-size:16px;}
 
-  .caption{max-width:520px;text-align:center;font-size:15px;line-height:1.6;color:var(--text);
-    opacity:0;transition:opacity .35s ease;min-height:24px;padding:0 20px;}
+  .hint{font-size:11px;color:var(--muted);letter-spacing:.5px;margin-top:2px;transition:opacity .3s;}
+  .widgets.hidden ~ .hint{opacity:0;}
+
+  .caption{position:fixed;bottom:34px;left:50%;transform:translateX(-50%);max-width:min(560px,86vw);
+    text-align:center;font-size:13.5px;line-height:1.5;color:var(--text);background:rgba(10,17,31,0.7);
+    border:1px solid var(--line);border-radius:14px;padding:10px 18px;opacity:0;transition:opacity .3s;pointer-events:none;}
   .caption.show{opacity:1;}
-  .caption.user{color:var(--muted);font-size:13.5px;}
 
-  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--panel-2);border:1px solid var(--cyan-soft);
-    color:var(--cyan);padding:9px 18px;border-radius:20px;font-size:12px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:100;font-family:var(--font-d);letter-spacing:.5px;}
-  .toast.show{opacity:1;}
-  .hint{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);font-size:10.5px;letter-spacing:1px;color:var(--muted);
-    font-family:var(--font-d);opacity:.55;}
   @media (prefers-reduced-motion:reduce){.ring-outer,.ring-arc,.particle,.core-glow{animation:none !important;}}
 </style>
 </head>
 <body>
-<div class="drag-strip"></div>
+<div class="drag-region"></div>
 <div id="app">
-  <div class="avatar-wrap" id="avatar" data-state="idle" title="Click to talk">
+  <div class="avatar-wrap" id="avatar" data-state="idle">
     <div class="core-glow"></div>
     <svg class="avatar-svg" viewBox="0 0 200 200">
       <circle cx="100" cy="100" r="96" class="ring-tick"/>
@@ -83,33 +80,22 @@
       <circle cx="100" cy="100" r="80" class="ring-arc"/>
       <circle cx="100" cy="100" r="58" class="ring-core"/>
     </svg>
-    <div class="avatar-label"><span class="avatar-state" id="avatarState">tap to talk</span></div>
+    <div class="avatar-label"><span class="avatar-title">JARVIS</span><span class="avatar-state" id="avatarState">listening for you</span></div>
     <div class="particle" style="top:10%;left:20%;animation-delay:0s;"></div>
     <div class="particle" style="top:70%;left:8%;animation-delay:1.2s;"></div>
     <div class="particle" style="top:20%;left:85%;animation-delay:2.4s;"></div>
     <div class="particle" style="top:85%;left:75%;animation-delay:.6s;"></div>
   </div>
 
-  <div class="idle-info" id="idleInfo">
-    <div>
-      <div class="clock" id="clock">--:--:--</div>
-      <div class="date" id="dateLine">loading date</div>
-    </div>
-    <div class="weather" id="weatherBox">
-      <div>
-        <h4 id="weatherLabel">Weather</h4>
-        <div class="weather-temp" id="weatherTemp">--°</div>
-        <div class="weather-sub" id="weatherSub">Loading…</div>
-      </div>
-    </div>
+  <div class="widgets" id="widgets">
+    <div class="clock" id="clock">--:--:--</div>
+    <div class="date" id="dateLine">loading date</div>
+    <div class="weather" id="weatherLine"><b id="weatherTemp">--°</b><span id="weatherSub">loading weather</span></div>
   </div>
-
-  <div class="caption" id="captionUser"></div>
-  <div class="caption" id="captionJarvis"></div>
+  <div class="hint">just start talking — or click Jarvis</div>
 </div>
 
-<div class="hint" id="hint">click the ring to talk</div>
-<div class="toast" id="toast"></div>
+<div class="caption" id="caption"></div>
 
 <script>
 function tick(){
@@ -119,142 +105,140 @@ function tick(){
 }
 tick(); setInterval(tick,1000);
 
-function setAvatarState(state){
-  document.getElementById('avatar').dataset.state = state;
-  const label = state === 'idle' ? 'tap to talk' : state;
-  document.getElementById('avatarState').textContent = label;
-}
-function toast(msg){
-  const t = document.getElementById('toast');
-  t.textContent = msg; t.classList.add('show');
-  clearTimeout(t._h); t._h = setTimeout(()=>t.classList.remove('show'),2600);
-}
-
-(async () => {
-  const ok = await window.jarvis.hasConfig();
-  if (!ok) toast('config.json missing — copy config.example.json and add your keys');
-})();
-
 const WMO = {0:'Clear',1:'Mostly clear',2:'Partly cloudy',3:'Overcast',45:'Fog',48:'Fog',51:'Drizzle',61:'Rain',63:'Rain',65:'Heavy rain',71:'Snow',73:'Snow',75:'Heavy snow',80:'Showers',95:'Storm'};
 async function loadWeather(){
   const w = await window.jarvis.weather();
-  if (w.error){ document.getElementById('weatherSub').textContent = 'Unavailable'; return; }
-  document.getElementById('weatherLabel').textContent = 'Weather · ' + w.label;
+  if (w.error){ document.getElementById('weatherSub').textContent = 'weather unavailable'; return; }
   document.getElementById('weatherTemp').textContent = w.temp + '°C';
-  document.getElementById('weatherSub').textContent = (WMO[w.code] || '—') + ' · H ' + w.hi + '° L ' + w.lo + '°';
+  document.getElementById('weatherSub').textContent = w.label + ' · ' + (WMO[w.code]||'—') + ' · H' + w.hi + '° L' + w.lo + '°';
 }
 loadWeather(); setInterval(loadWeather, 15*60*1000);
 
-// ---- conversation state machine ----
-let conversationActive = false;
+(async () => {
+  const ok = await window.jarvis.hasConfig();
+  if (!ok) caption('config.json missing — copy config.example.json, add your API keys, then restart');
+})();
+
+function setAvatarState(state, label){
+  document.getElementById('avatar').dataset.state = state;
+  document.getElementById('avatarState').textContent = label || state;
+}
+function caption(text){
+  const c = document.getElementById('caption');
+  c.textContent = text; c.classList.add('show');
+  clearTimeout(c._h); c._h = setTimeout(()=>c.classList.remove('show'), 7000);
+}
+
+let conversing = false;
 let recog = null;
 let currentAudio = null;
-let silenceTimer = null;
+let micErrorCount = 0;
 
-function showCaption(el, text){
-  el.textContent = text;
-  el.classList.add('show');
+function startConversation(){
+  conversing = true;
+  document.getElementById('widgets').classList.add('hidden');
+  listenOnce();
 }
-function clearCaptions(){
-  ['captionUser','captionJarvis'].forEach(id=>{
-    const el = document.getElementById(id);
-    el.classList.remove('show'); el.textContent='';
-  });
-}
-
-function armSilenceTimeout(){
-  clearTimeout(silenceTimer);
-  silenceTimer = setTimeout(()=>{ if(conversationActive) endConversation(); }, 45000);
-}
-
-function initRecognition(){
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if(!SR) return null;
-  const r = new SR();
-  r.lang = 'en-US'; r.continuous = true; r.interimResults = false; r.maxAlternatives = 1;
-  return r;
-}
-
-function startListening(){
-  recog = initRecognition();
-  if(!recog){ toast('Speech recognition unavailable'); endConversation(); return; }
-  recog.onresult = (e)=>{
-    const last = e.results[e.results.length-1];
-    if(!last.isFinal) return;
-    const said = last[0].transcript.trim();
-    if(!said) return;
-    clearTimeout(silenceTimer);
-    handleUtterance(said);
-  };
-  recog.onerror = (e)=>{
-    if(e.error === 'no-speech') return;
-    toast('Mic error — check OS microphone permission for Jarvis');
-  };
-  recog.onend = ()=>{
-    if(conversationActive && document.getElementById('avatar').dataset.state === 'listening'){
-      try{ recog.start(); }catch(e){}
-    }
-  };
-  try{ recog.start(); }catch(e){}
-  setAvatarState('listening');
-  armSilenceTimeout();
-}
-
-function stopListening(){
-  if(recog){ recog.onend = null; try{ recog.stop(); }catch(e){} recog = null; }
-}
-
-function beginConversation(){
-  conversationActive = true;
-  document.getElementById('idleInfo').classList.add('hidden');
-  document.getElementById('hint').style.opacity = 0;
-  clearCaptions();
-  startListening();
-}
-
 function endConversation(){
-  conversationActive = false;
-  clearTimeout(silenceTimer);
-  stopListening();
-  if(currentAudio){ currentAudio.pause(); currentAudio = null; }
-  setAvatarState('idle');
-  document.getElementById('idleInfo').classList.remove('hidden');
-  document.getElementById('hint').style.opacity = .55;
-  clearCaptions();
+  conversing = false;
+  document.getElementById('widgets').classList.remove('hidden');
+  if (recog){ try{ recog.onend=null; recog.onresult=null; recog.onerror=null; recog.stop(); }catch(e){} recog=null; }
+  if (currentAudio){ try{ currentAudio.pause(); }catch(e){} }
+  setAvatarState('idle', 'listening for you');
+  document.getElementById('caption').classList.remove('show');
 }
-
-document.getElementById('avatar').addEventListener('click', ()=>{
-  if(conversationActive) endConversation();
-  else beginConversation();
+document.getElementById('avatar').addEventListener('click', () => {
+  conversing ? endConversation() : startConversation();
 });
 
-async function handleUtterance(said){
-  stopListening();
-  setAvatarState('thinking');
-  showCaption(document.getElementById('captionUser'), said);
-  document.getElementById('captionJarvis').classList.remove('show');
+function listenOnce(){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR){ caption('Speech recognition is not available in this window'); endConversation(); return; }
+  setAvatarState('listening');
+  recog = new SR();
+  recog.lang = 'en-US'; recog.continuous = false; recog.interimResults = false;
+  recog.onresult = (e) => {
+    micErrorCount = 0;
+    const said = e.results[0][0].transcript;
+    caption('You: ' + said);
+    handleTurn(said);
+  };
+  recog.onerror = () => {
+    if (!conversing) return;
+    micErrorCount++;
+    if (micErrorCount >= 3){
+      caption("Mic isn't responding — check microphone permission for Jarvis, then click to try again");
+      endConversation();
+      return;
+    }
+    setTimeout(()=>{ if(conversing) listenOnce(); }, 800);
+  };
+  recog.onend = () => {
+    if (conversing && document.getElementById('avatar').dataset.state === 'listening'){
+      listenOnce();
+    }
+  };
+  try{ recog.start(); }catch(e){ if(conversing) setTimeout(()=>{ if(conversing) listenOnce(); }, 500); }
+}
 
-  const res = await window.jarvis.ask(said, { speak: true });
+async function handleTurn(text){
+  setAvatarState('thinking');
+  const res = await window.jarvis.ask(text);
+  if (!conversing) return;
   if (res.error){
-    showCaption(document.getElementById('captionJarvis'), "Trouble on my end: " + res.error);
-    setAvatarState('listening');
-    if(conversationActive) startListening();
+    caption('Hiccup: ' + res.error);
+    listenOnce();
     return;
   }
-  showCaption(document.getElementById('captionJarvis'), res.replyText);
-
+  caption('Jarvis: ' + res.replyText);
   if (res.audioDataUrl){
     setAvatarState('speaking');
     currentAudio = new Audio(res.audioDataUrl);
-    currentAudio.onended = () => {
-      currentAudio = null;
-      if (conversationActive){ startListening(); }
-    };
-    currentAudio.play().catch(()=>{ if(conversationActive) startListening(); });
-  } else if (conversationActive){
-    startListening();
+    currentAudio.onended = () => { if (conversing) listenOnce(); };
+    currentAudio.onerror = () => { if (conversing) listenOnce(); };
+    currentAudio.play().catch(()=>{ if (conversing) listenOnce(); });
+  } else if (conversing){
+    listenOnce();
   }
 }
+
+// ---- voice-activity detection: notices when you start talking, no click needed ----
+// If it triggers too easily (background noise) or not easily enough, tune VAD_THRESHOLD below.
+let vadAnalyser = null, vadData = null, voiceFrames = 0;
+const VAD_THRESHOLD = 22;
+const VAD_SUSTAIN_FRAMES = 8;
+
+async function initVAD(){
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const source = ctx.createMediaStreamSource(stream);
+    vadAnalyser = ctx.createAnalyser();
+    vadAnalyser.fftSize = 512;
+    source.connect(vadAnalyser);
+    vadData = new Uint8Array(vadAnalyser.frequencyBinCount);
+    requestAnimationFrame(vadLoop);
+  }catch(e){
+    caption('Mic permission needed for voice detection — click Jarvis to talk instead');
+  }
+}
+
+function vadLoop(){
+  if (vadAnalyser && !conversing){
+    vadAnalyser.getByteTimeDomainData(vadData);
+    let sum = 0;
+    for (let i=0;i<vadData.length;i++){ sum += Math.abs(vadData[i]-128); }
+    const avg = sum / vadData.length;
+    if (avg > VAD_THRESHOLD){
+      voiceFrames++;
+      if (voiceFrames > VAD_SUSTAIN_FRAMES){ voiceFrames = 0; startConversation(); }
+    } else {
+      voiceFrames = 0;
+    }
+  }
+  requestAnimationFrame(vadLoop);
+}
+initVAD();
 </script>
 </body>
 </html>

@@ -1,0 +1,14 @@
+{
+  "anthropicApiKey": "sk-ant-...",
+  "elevenLabsApiKey": "...",
+  "elevenLabsVoiceId": "onwK4e9ZLuTAKqWW03F9",
+  "weather": {
+    "label": "Cairo",
+    "lat": 30.0444,
+    "lon": 31.2357
+  },
+  "allowedApps": {
+    "Calculator": { "mac": "Calculator", "win": "calc", "linux": "gnome-calculator" },
+    "Notes": { "mac": "Notes", "win": "notepad", "linux": "gedit" }
+  }
+}

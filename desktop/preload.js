@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('jarvis', {
   ask: (text) => ipcRenderer.invoke('ask-jarvis', { text }),
   weather: () => ipcRenderer.invoke('get-weather'),
   systemStats: () => ipcRenderer.invoke('get-system-stats'),
+  transcribe: (base64Audio) => ipcRenderer.invoke('transcribe', base64Audio),
   launchApp: (name) => ipcRenderer.invoke('launch-app', name),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   saveRecording: (base64Data) => ipcRenderer.invoke('save-recording', base64Data),

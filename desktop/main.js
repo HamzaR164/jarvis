@@ -350,8 +350,34 @@ async function getSystemStats() {
   };
 }
 
+async function transcribeAudio(base64Audio) {
+  if (!config || !config.elevenLabsApiKey) {
+    return { ok: false, error: 'No elevenLabsApiKey configured — needed for speech-to-text.' };
+  }
+  try {
+    const buf = Buffer.from(base64Audio, 'base64');
+    const form = new FormData();
+    form.append('model_id', 'scribe_v1');
+    form.append('file', new Blob([buf], { type: 'audio/webm' }), 'audio.webm');
+    const res = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
+      method: 'POST',
+      headers: { 'xi-api-key': config.elevenLabsApiKey },
+      body: form
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      return { ok: false, error: `Transcription failed (${res.status}): ${errText.slice(0, 200)}` };
+    }
+    const data = await res.json();
+    return { ok: true, text: (data.text || '').trim() };
+  } catch (e) {
+    return { ok: false, error: String(e.message || e) };
+  }
+}
+
 ipcMain.handle('has-config', async () => !!config);
 ipcMain.handle('get-system-stats', async () => getSystemStats());
+ipcMain.handle('transcribe', async (event, base64Audio) => transcribeAudio(base64Audio));
 
 ipcMain.handle('ask-jarvis', async (event, { text }) => {
   if (!config || !config.anthropicApiKey) {

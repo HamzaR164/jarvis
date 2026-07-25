@@ -39,18 +39,46 @@ function createWindow() {
 
 function createTray() {
   try {
-    tray = new Tray(path.join(__dirname, 'assets', 'tray.png'));
+    tray = new Tray(path.join(__dirname, 'assets', 'tray-idle.png'));
     const menu = Menu.buildFromTemplate([
       { label: 'Show Jarvis', click: () => win.show() },
       { type: 'separator' },
       { label: 'Quit', click: () => app.quit() }
     ]);
-    tray.setToolTip('Jarvis');
+    tray.setToolTip('Jarvis — idle');
     tray.setContextMenu(menu);
     tray.on('click', () => (win.isVisible() ? win.hide() : win.show()));
   } catch (e) {
     console.error('Tray failed to initialize:', e.message);
   }
+}
+
+let thinkingAnimTimer = null;
+function setTrayState(state) {
+  if (!tray) return;
+  if (thinkingAnimTimer) {
+    clearInterval(thinkingAnimTimer);
+    thinkingAnimTimer = null;
+  }
+  const staticIcons = {
+    idle: 'tray-idle.png',
+    listening: 'tray-listening.png',
+    speaking: 'tray-speaking.png',
+    recording: 'tray-recording.png'
+  };
+  if (state === 'thinking') {
+    const frames = ['tray-thinking-1.png', 'tray-thinking-2.png'];
+    let frame = 0;
+    tray.setImage(path.join(__dirname, 'assets', frames[0]));
+    thinkingAnimTimer = setInterval(() => {
+      frame = (frame + 1) % frames.length;
+      try { tray.setImage(path.join(__dirname, 'assets', frames[frame])); } catch (e) {}
+    }, 400);
+  } else {
+    const iconFile = staticIcons[state] || staticIcons.idle;
+    try { tray.setImage(path.join(__dirname, 'assets', iconFile)); } catch (e) {}
+  }
+  tray.setToolTip('Jarvis — ' + state);
 }
 
 app.whenReady().then(() => {
@@ -65,7 +93,10 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
-app.on('will-quit', () => globalShortcut.unregisterAll());
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
+  if (thinkingAnimTimer) clearInterval(thinkingAnimTimer);
+});
 
 function baseSystemPrompt() {
   const allowedNames = Object.keys((config && config.allowedApps) || {});
@@ -378,6 +409,7 @@ async function transcribeAudio(base64Audio) {
 ipcMain.handle('has-config', async () => !!config);
 ipcMain.handle('get-system-stats', async () => getSystemStats());
 ipcMain.handle('transcribe', async (event, base64Audio) => transcribeAudio(base64Audio));
+ipcMain.on('state-changed', (event, state) => setTrayState(state));
 
 ipcMain.handle('ask-jarvis', async (event, { text }) => {
   if (!config || !config.anthropicApiKey) {

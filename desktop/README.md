@@ -46,6 +46,25 @@ by request; voice is the only input everywhere else for now.
    - `organizableFolders` — folders Jarvis is allowed to tidy up (list/move/rename, never delete)
 4. `npm start`
 
+**Quicker launching, no terminal each time:** this folder now also has one-click
+launchers, so `npm start` above is only needed the first time to make sure everything's
+installed correctly:
+- **Windows**: double-click `Start Jarvis.bat`. To pin it: right-click the file → *Create
+  shortcut* → right-click that shortcut → *Pin to taskbar* (Windows generally won't pin a
+  raw `.bat` directly, but pins its shortcut fine).
+- **Mac**: double-click `Jarvis.app` (a real, proper app — keep it inside this folder,
+  don't move it elsewhere) or `Start Jarvis.command`. Drag `Jarvis.app` straight to your
+  Dock for one-click access from then on.
+- **Linux**: edit the two `REPLACE_WITH_FULL_PATH_TO_jarvis-desktop_FOLDER` placeholders in
+  `jarvis.desktop` to the actual full path where you extracted this folder, then move
+  `jarvis.desktop` to `~/.local/share/applications/` — it'll show up in your app menu to
+  pin like any other app. (Linux's `.desktop` format needs a real absolute path here;
+  that's a platform requirement, not something I could route around.)
+
+Once it's open, **it already lives in your system tray/menu bar** — closing the window
+doesn't quit it, and clicking the tray icon brings it right back, so you only need a
+launcher for the very first open each session.
+
 Both API calls happen in the main process — your keys never touch the renderer, so they
 can't leak through dev tools or a compromised page.
 
@@ -76,7 +95,9 @@ can't leak through dev tools or a compromised page.
   anything paid he doesn't already have a key for gets asked about first.
 
 ## Not built yet
-- Packaging into a one-click installer (.exe / .dmg) — right now this runs via `npm start`
+- Packaging into a true one-click installer (.exe / .dmg with no setup steps) — the
+  launchers above remove the terminal step, but `npm install` and adding your API keys
+  are still one-time manual steps
 - School mode (Ctrl+Enter sidebar)
 - General web search (only reading a specific URL is wired in — search needs a paid API key)
 - Speaker-specific voice recognition — voice detection reacts to any sufficiently loud

@@ -82,7 +82,7 @@
       <circle cx="100" cy="100" r="80" class="ring-arc"/>
       <circle cx="100" cy="100" r="58" class="ring-core"/>
     </svg>
-    <div class="avatar-label"><span class="avatar-title">JARVIS</span><span class="avatar-state" id="avatarState">listening for you</span></div>
+    <div class="avatar-label"><span class="avatar-title">JARVIS</span><span class="avatar-state" id="avatarState">say "Jarvis" to talk</span></div>
     <div class="particle" style="top:10%;left:20%;animation-delay:0s;"></div>
     <div class="particle" style="top:70%;left:8%;animation-delay:1.2s;"></div>
     <div class="particle" style="top:20%;left:85%;animation-delay:2.4s;"></div>
@@ -95,7 +95,7 @@
     <div class="weather" id="weatherLine"><b id="weatherTemp">--°</b><span id="weatherSub">loading weather</span></div>
     <div class="stats" id="statsLine">CPU --% · RAM --GB</div>
   </div>
-  <div class="hint">just start talking — or click Jarvis</div>
+  <div class="hint">say "Jarvis" — or click the ring</div>
 </div>
 
 <div class="caption" id="caption"></div>
@@ -153,15 +153,8 @@ function arrayBufferToBase64(buffer){
 
 let conversing = false;
 let currentAudio = null;
+let requireWakeWord = true;
 
-/* ---------------------------------------------------------------------
-   Speech input: Electron's Chromium does NOT have a working built-in
-   webkitSpeechRecognition (Google restricts that API's backing service
-   to the official Chrome browser — it throws a permanent 'network'
-   error in Electron and always has). So input goes through actual
-   audio recording (MediaRecorder) + ElevenLabs Scribe transcription
-   instead, which is what's built below.
---------------------------------------------------------------------- */
 let micStream = null, vadAnalyser = null, vadData = null;
 let voiceFrames = 0, silenceFrames = 0;
 const VAD_THRESHOLD = 22;
@@ -216,6 +209,7 @@ initMic();
 
 function startConversation(){
   conversing = true;
+  requireWakeWord = true;
   document.getElementById('widgets').classList.add('hidden');
   startUtteranceRecording();
 }
@@ -227,11 +221,12 @@ function endConversation(){
     try{ utteranceRecorder.onstop = null; utteranceRecorder.stop(); }catch(e){}
   }
   if (currentAudio){ try{ currentAudio.pause(); }catch(e){} }
-  setAvatarState('idle', 'listening for you');
+  setAvatarState('idle', 'say "Jarvis" to talk');
   document.getElementById('caption').classList.remove('show');
 }
 document.getElementById('avatar').addEventListener('click', () => {
-  conversing ? endConversation() : startConversation();
+  if (conversing){ endConversation(); }
+  else { requireWakeWord = false; startConversation(); }
 });
 
 function startUtteranceRecording(){
@@ -279,6 +274,11 @@ async function onUtteranceStopped(){
       startUtteranceRecording();
       return;
     }
+    if (requireWakeWord && !t.text.toLowerCase().includes('jarvis')){
+      endConversation();
+      return;
+    }
+    requireWakeWord = false;
     caption('You: ' + t.text);
     handleTurn(t.text);
   }catch(e){
@@ -308,16 +308,23 @@ async function handleTurn(text){
   }
 }
 
-/* ---------------------------------------------------------------------
-   Screen recording: uses its own separate getDisplayMedia stream
-   (different from the mic stream above), triggered by Jarvis via voice.
---------------------------------------------------------------------- */
 let mediaRecorder = null, recordedChunks = [], recordingStream = null;
 
 window.jarvis.onStartRecording(async () => {
   if (mediaRecorder && mediaRecorder.state === 'recording'){ caption('Already recording'); return; }
   try{
-    recordingStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+    const src = await window.jarvis.getScreenSource();
+    if (!src.ok){ caption('Could not get a screen source: ' + src.error); return; }
+    recordingStream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {
+        mandatory: {
+          chromeMediaSource: 'desktop',
+          chromeMediaSourceId: src.sourceId,
+          minWidth: 1280, maxWidth: 1920, minHeight: 720, maxHeight: 1080
+        }
+      }
+    });
     recordedChunks = [];
     mediaRecorder = new MediaRecorder(recordingStream, { mimeType: 'video/webm;codecs=vp9' });
     mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
@@ -328,13 +335,13 @@ window.jarvis.onStartRecording(async () => {
       const res = await window.jarvis.saveRecording(base64);
       caption(res.ok ? `Recording saved: ${res.path}` : `Recording failed to save: ${res.error}`);
       if (recordingStream) recordingStream.getTracks().forEach(t => t.stop());
-      if (document.getElementById('avatar').dataset.state === 'recording') setAvatarState('idle', conversing ? 'listening' : 'listening for you');
+      if (document.getElementById('avatar').dataset.state === 'recording') setAvatarState('idle', conversing ? 'listening' : 'say "Jarvis" to talk');
     };
     mediaRecorder.start();
     setAvatarState('recording');
     caption('Recording started');
   }catch(e){
-    caption('Could not start recording — the OS may have blocked the picker: ' + (e.message || e));
+    caption('Could not start recording (on Mac, check System Settings > Privacy > Screen Recording): ' + (e.message || e));
   }
 });
 

@@ -357,7 +357,7 @@ async function transcribeAudio(base64Audio) {
   try {
     const buf = Buffer.from(base64Audio, 'base64');
     const form = new FormData();
-    form.append('model_id', 'scribe_v1');
+    form.append('model_id', 'scribe_v2');
     form.append('file', new Blob([buf], { type: 'audio/webm' }), 'audio.webm');
     const res = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
       method: 'POST',

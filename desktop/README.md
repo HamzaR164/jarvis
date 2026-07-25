@@ -75,9 +75,12 @@ just didn't want to quietly build the always-listening cloud version instead.
 **Quicker launching, no terminal each time:** this folder now also has one-click
 launchers, so `npm start` above is only needed the first time to make sure everything's
 installed correctly:
-- **Windows**: double-click `Start Jarvis.bat`. To pin it: right-click the file → *Create
-  shortcut* → right-click that shortcut → *Pin to taskbar* (Windows generally won't pin a
-  raw `.bat` directly, but pins its shortcut fine).
+- **Windows**: for everyday use, pin `Start Jarvis Silently.vbs` — right-click it → *Create
+  shortcut* → right-click that shortcut → *Pin to taskbar*. This one opens Jarvis directly
+  with no console window, which is what you want pinned. `Start Jarvis.bat` still exists
+  and works fine double-clicked directly, but pinning *it* means Windows shows its console
+  window every time (that's just how `.bat` files behave when double-clicked, not a bug) —
+  use the `.vbs` one for pinning instead.
 - **Mac**: double-click `Jarvis.app` (a real, proper app — keep it inside this folder,
   don't move it elsewhere) or `Start Jarvis.command`. Drag `Jarvis.app` straight to your
   Dock for one-click access from then on.
@@ -99,7 +102,7 @@ can't leak through dev tools or a compromised page.
 - Real speech-to-speech: continuous mic listening → Claude → ElevenLabs voice → played back,
   with the mic muted while Jarvis is talking so he doesn't hear himself
 - **Voice-activity detection**: Jarvis notices when you start talking and begins the
-  conversation automatically — no click required, gated by saying "Jarvis" once per conversation
+  conversation automatically — no click required
 - **Desktop control that's actually wired in, not just described**:
   - `launch_app` — opens apps you've explicitly allow-listed in `config.json`
   - `open_website` — opens a URL in your default browser
@@ -124,7 +127,6 @@ can't leak through dev tools or a compromised page.
   anything paid he doesn't already have a key for gets asked about first.
 
 ## Not built yet
-- Packaging into a one-click installer (.exe / .dmg) — right now this runs via `npm start`
 - A literal entry in the native OS right-click menu — needs platform-native extensions
   (macOS Services, Windows shell extensions) Electron can't build; the hotkey popup above
   is the real substitute
@@ -132,6 +134,13 @@ can't leak through dev tools or a compromised page.
   voice/sound (gated by saying "Jarvis" once per conversation), not a verified voiceprint
 - A spoken wake phrase for hands-free launch ("daddy's home") — see the honest explanation
   above; clap-launcher.js is the free/local alternative that's actually built
+
+## Building a real installer
+`npm run dist:win` (on Windows) / `npm run dist:mac` (on Mac) / `npm run dist:linux` (on
+Linux) — each has to run on its own OS; installers can't be reliably cross-built. The Linux
+one is verified working (built and actually ran from the packaged output, not just `npm
+start`); Windows/Mac just need to be run on that OS to confirm, since this sandbox can't do
+either.
 
 ## Repo
 Full history and the earlier web-preview version: https://github.com/HamzaR164/jarvis

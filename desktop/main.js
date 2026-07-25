@@ -155,12 +155,14 @@ async function openAskPopup() {
   popupWin.webContents.once('did-finish-load', () => {
     popupWin.webContents.send('popup-selected-text', selectedText);
   });
+  // In case the window was already loaded from a previous invocation:
   if (!popupWin.webContents.isLoadingMainFrame()) {
     popupWin.webContents.send('popup-selected-text', selectedText);
   }
 }
 
 app.whenReady().then(() => {
+  Menu.setApplicationMenu(null);
   config = loadConfig();
   createWindow();
   createTray();

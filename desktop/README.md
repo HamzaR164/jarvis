@@ -18,8 +18,17 @@ Just start talking. Jarvis detects your voice automatically (via a volume-based 
 not a click) — the clock and weather slide away, and you're in a live conversation, no
 re-clicking between sentences. He answers out loud. You can also click the ring to start
 or end a conversation manually — useful in a noisy room, or if the automatic detection
-isn't reliable on your mic/setup (tune `VAD_THRESHOLD` near the bottom of `index.html` if
-it triggers too easily or not easily enough).
+isn't reliable on your mic/setup (tune `VAD_THRESHOLD` near the top of the script in
+`index.html` if it triggers too easily or not easily enough).
+
+**Speech-to-text runs through ElevenLabs (Scribe), not the browser's built-in speech
+recognition.** Electron's bundled Chromium doesn't have a working `webkitSpeechRecognition`
+— Google restricts the free backing service to the actual Chrome browser, so it throws a
+permanent `network` error in any Electron app, always has. So this records your voice
+properly (stops on a pause, detected the same way the start-of-conversation listener
+works) and sends it to ElevenLabs for transcription. That means speech-to-text is now a
+paid, usage-based ElevenLabs cost too, on top of the voice replies — worth knowing since
+it wasn't before.
 
 The only exception is **school mode** (text-only, silent, Ctrl+Enter) — coming back later
 by request; voice is the only input everywhere else for now.

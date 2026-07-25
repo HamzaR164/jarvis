@@ -140,117 +140,6 @@ function caption(text){
   c.textContent = text; c.classList.add('show');
   clearTimeout(c._h); c._h = setTimeout(()=>c.classList.remove('show'), 7000);
 }
-
-let conversing = false;
-let recog = null;
-let currentAudio = null;
-let micErrorCount = 0;
-
-function startConversation(){
-  conversing = true;
-  document.getElementById('widgets').classList.add('hidden');
-  listenOnce();
-}
-function endConversation(){
-  conversing = false;
-  document.getElementById('widgets').classList.remove('hidden');
-  if (recog){ try{ recog.onend=null; recog.onresult=null; recog.onerror=null; recog.stop(); }catch(e){} recog=null; }
-  if (currentAudio){ try{ currentAudio.pause(); }catch(e){} }
-  setAvatarState('idle', 'listening for you');
-  document.getElementById('caption').classList.remove('show');
-}
-document.getElementById('avatar').addEventListener('click', () => {
-  conversing ? endConversation() : startConversation();
-});
-
-function listenOnce(){
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if(!SR){ caption('Speech recognition is not available in this window'); endConversation(); return; }
-  setAvatarState('listening');
-  recog = new SR();
-  recog.lang = 'en-US'; recog.continuous = false; recog.interimResults = false;
-  recog.onresult = (e) => {
-    micErrorCount = 0;
-    const said = e.results[0][0].transcript;
-    caption('You: ' + said);
-    handleTurn(said);
-  };
-  recog.onerror = () => {
-    if (!conversing) return;
-    micErrorCount++;
-    if (micErrorCount >= 3){
-      caption("Mic isn't responding — check microphone permission for Jarvis, then click to try again");
-      endConversation();
-      return;
-    }
-    setTimeout(()=>{ if(conversing) listenOnce(); }, 800);
-  };
-  recog.onend = () => {
-    if (conversing && document.getElementById('avatar').dataset.state === 'listening'){
-      listenOnce();
-    }
-  };
-  try{ recog.start(); }catch(e){ if(conversing) setTimeout(()=>{ if(conversing) listenOnce(); }, 500); }
-}
-
-async function handleTurn(text){
-  setAvatarState('thinking');
-  const res = await window.jarvis.ask(text);
-  if (!conversing) return;
-  if (res.error){
-    caption('Hiccup: ' + res.error);
-    listenOnce();
-    return;
-  }
-  caption('Jarvis: ' + res.replyText);
-  if (res.audioDataUrl){
-    setAvatarState('speaking');
-    currentAudio = new Audio(res.audioDataUrl);
-    currentAudio.onended = () => { if (conversing) listenOnce(); };
-    currentAudio.onerror = () => { if (conversing) listenOnce(); };
-    currentAudio.play().catch(()=>{ if (conversing) listenOnce(); });
-  } else if (conversing){
-    listenOnce();
-  }
-}
-
-// ---- voice-activity detection: notices when you start talking, no click needed ----
-let vadAnalyser = null, vadData = null, voiceFrames = 0;
-const VAD_THRESHOLD = 22;
-const VAD_SUSTAIN_FRAMES = 8;
-
-async function initVAD(){
-  try{
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const source = ctx.createMediaStreamSource(stream);
-    vadAnalyser = ctx.createAnalyser();
-    vadAnalyser.fftSize = 512;
-    source.connect(vadAnalyser);
-    vadData = new Uint8Array(vadAnalyser.frequencyBinCount);
-    requestAnimationFrame(vadLoop);
-  }catch(e){
-    caption('Mic permission needed for voice detection — click Jarvis to talk instead');
-  }
-}
-function vadLoop(){
-  if (vadAnalyser && !conversing){
-    vadAnalyser.getByteTimeDomainData(vadData);
-    let sum = 0;
-    for (let i=0;i<vadData.length;i++){ sum += Math.abs(vadData[i]-128); }
-    const avg = sum / vadData.length;
-    if (avg > VAD_THRESHOLD){
-      voiceFrames++;
-      if (voiceFrames > VAD_SUSTAIN_FRAMES){ voiceFrames = 0; startConversation(); }
-    } else {
-      voiceFrames = 0;
-    }
-  }
-  requestAnimationFrame(vadLoop);
-}
-initVAD();
-
-// ---- screen recording: triggered by Jarvis via voice, captured here in the renderer ----
 function arrayBufferToBase64(buffer){
   let binary = '';
   const bytes = new Uint8Array(buffer);
@@ -261,6 +150,167 @@ function arrayBufferToBase64(buffer){
   return btoa(binary);
 }
 
+let conversing = false;
+let currentAudio = null;
+
+/* ---------------------------------------------------------------------
+   Speech input: Electron's Chromium does NOT have a working built-in
+   webkitSpeechRecognition (Google restricts that API's backing service
+   to the official Chrome browser — it throws a permanent 'network'
+   error in Electron and always has). So input goes through actual
+   audio recording (MediaRecorder) + ElevenLabs Scribe transcription
+   instead, which is what's built below.
+--------------------------------------------------------------------- */
+let micStream = null, vadAnalyser = null, vadData = null;
+let voiceFrames = 0, silenceFrames = 0;
+const VAD_THRESHOLD = 22;
+const VAD_SUSTAIN_FRAMES = 8;
+const SILENCE_SUSTAIN_FRAMES = 45;
+const MIN_UTTERANCE_MS = 500;
+
+let utteranceRecorder = null, utteranceChunks = [], isRecordingUtterance = false, utteranceStartTime = 0;
+
+async function initMic(){
+  try{
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const source = ctx.createMediaStreamSource(micStream);
+    vadAnalyser = ctx.createAnalyser();
+    vadAnalyser.fftSize = 512;
+    source.connect(vadAnalyser);
+    vadData = new Uint8Array(vadAnalyser.frequencyBinCount);
+    requestAnimationFrame(vadLoop);
+  }catch(e){
+    caption('Mic permission needed — check your OS microphone permission for Jarvis, then reopen');
+  }
+}
+
+function vadLoop(){
+  if (vadAnalyser){
+    vadAnalyser.getByteTimeDomainData(vadData);
+    let sum = 0;
+    for (let i=0;i<vadData.length;i++){ sum += Math.abs(vadData[i]-128); }
+    const avg = sum / vadData.length;
+
+    if (!conversing){
+      if (avg > VAD_THRESHOLD){
+        voiceFrames++;
+        if (voiceFrames > VAD_SUSTAIN_FRAMES){ voiceFrames = 0; startConversation(); }
+      } else { voiceFrames = 0; }
+    } else if (isRecordingUtterance){
+      if (avg > VAD_THRESHOLD){
+        silenceFrames = 0;
+      } else {
+        silenceFrames++;
+        const elapsed = Date.now() - utteranceStartTime;
+        if (silenceFrames > SILENCE_SUSTAIN_FRAMES && elapsed > MIN_UTTERANCE_MS){
+          stopUtteranceRecording();
+        }
+      }
+    }
+  }
+  requestAnimationFrame(vadLoop);
+}
+initMic();
+
+function startConversation(){
+  conversing = true;
+  document.getElementById('widgets').classList.add('hidden');
+  startUtteranceRecording();
+}
+function endConversation(){
+  conversing = false;
+  document.getElementById('widgets').classList.remove('hidden');
+  if (isRecordingUtterance && utteranceRecorder && utteranceRecorder.state === 'recording'){
+    isRecordingUtterance = false;
+    try{ utteranceRecorder.onstop = null; utteranceRecorder.stop(); }catch(e){}
+  }
+  if (currentAudio){ try{ currentAudio.pause(); }catch(e){} }
+  setAvatarState('idle', 'listening for you');
+  document.getElementById('caption').classList.remove('show');
+}
+document.getElementById('avatar').addEventListener('click', () => {
+  conversing ? endConversation() : startConversation();
+});
+
+function startUtteranceRecording(){
+  if (!micStream){ caption('Microphone not ready — check OS mic permission'); endConversation(); return; }
+  setAvatarState('listening');
+  utteranceChunks = [];
+  silenceFrames = 0;
+  utteranceStartTime = Date.now();
+  try{
+    utteranceRecorder = new MediaRecorder(micStream, { mimeType: 'audio/webm' });
+  }catch(e){
+    caption('Recording not supported here: ' + (e.message || e));
+    endConversation();
+    return;
+  }
+  isRecordingUtterance = true;
+  utteranceRecorder.ondataavailable = (e) => { if (e.data.size > 0) utteranceChunks.push(e.data); };
+  utteranceRecorder.onstop = onUtteranceStopped;
+  utteranceRecorder.start();
+}
+
+function stopUtteranceRecording(){
+  isRecordingUtterance = false;
+  if (utteranceRecorder && utteranceRecorder.state === 'recording'){
+    utteranceRecorder.stop();
+  }
+}
+
+async function onUtteranceStopped(){
+  if (!conversing) return;
+  if (!utteranceChunks.length){ startUtteranceRecording(); return; }
+  setAvatarState('thinking');
+  try{
+    const blob = new Blob(utteranceChunks, { type: 'audio/webm' });
+    const buf = await blob.arrayBuffer();
+    const base64 = arrayBufferToBase64(buf);
+    const t = await window.jarvis.transcribe(base64);
+    if (!conversing) return;
+    if (!t.ok){
+      caption('Transcription hiccup: ' + t.error);
+      startUtteranceRecording();
+      return;
+    }
+    if (!t.text){
+      startUtteranceRecording();
+      return;
+    }
+    caption('You: ' + t.text);
+    handleTurn(t.text);
+  }catch(e){
+    caption('Hiccup: ' + (e.message || e));
+    if (conversing) startUtteranceRecording();
+  }
+}
+
+async function handleTurn(text){
+  setAvatarState('thinking');
+  const res = await window.jarvis.ask(text);
+  if (!conversing) return;
+  if (res.error){
+    caption('Hiccup: ' + res.error);
+    startUtteranceRecording();
+    return;
+  }
+  caption('Jarvis: ' + res.replyText);
+  if (res.audioDataUrl){
+    setAvatarState('speaking');
+    currentAudio = new Audio(res.audioDataUrl);
+    currentAudio.onended = () => { if (conversing) startUtteranceRecording(); };
+    currentAudio.onerror = () => { if (conversing) startUtteranceRecording(); };
+    currentAudio.play().catch(()=>{ if (conversing) startUtteranceRecording(); });
+  } else if (conversing){
+    startUtteranceRecording();
+  }
+}
+
+/* ---------------------------------------------------------------------
+   Screen recording: uses its own separate getDisplayMedia stream
+   (different from the mic stream above), triggered by Jarvis via voice.
+--------------------------------------------------------------------- */
 let mediaRecorder = null, recordedChunks = [], recordingStream = null;
 
 window.jarvis.onStartRecording(async () => {

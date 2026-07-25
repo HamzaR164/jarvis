@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Jarvis
+Comment=Personal JARVIS-style desktop assistant
+Exec=/bin/bash -c "cd 'REPLACE_WITH_FULL_PATH_TO_jarvis-desktop_FOLDER' && npm start"
+Icon=REPLACE_WITH_FULL_PATH_TO_jarvis-desktop_FOLDER/assets/icon.png
+Terminal=false
+Categories=Utility;

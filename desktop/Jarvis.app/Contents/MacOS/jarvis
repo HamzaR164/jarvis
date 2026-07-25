@@ -1,0 +1,8 @@
+#!/bin/bash
+# Finds the jarvis-desktop folder relative to this app bundle's own location,
+# so it works no matter where you extracted/placed the folder - just keep
+# this .app inside the jarvis-desktop folder itself.
+export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/../../.." && pwd )"
+cd "$DIR" || exit 1
+exec npm start

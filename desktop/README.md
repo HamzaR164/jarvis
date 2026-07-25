@@ -30,8 +30,34 @@ works) and sends it to ElevenLabs for transcription. That means speech-to-text i
 paid, usage-based ElevenLabs cost too, on top of the voice replies — worth knowing since
 it wasn't before.
 
-The only exception is **school mode** (text-only, silent, Ctrl+Enter) — coming back later
-by request; voice is the only input everywhere else for now.
+The only exception is **school mode** (text-only, silent, Ctrl+Enter — the window docks itself
+to a slim panel on the side of your screen and drops the avatar/voice entirely, same ambient
+philosophy as the tray, just text). Everywhere else, voice is the only input.
+
+**Ask Jarvis anywhere (Ctrl+Shift+J):** select text in any app, hit the shortcut, and a small
+popup opens with Jarvis already answering about it. This is the honest version of "add it to
+the right-click menu" — a real native context-menu entry needs OS-level extensions (a proper
+macOS Services provider, a Windows shell extension) that Electron can't build and that I can't
+compile or test from here. This gets you the same outcome through a hotkey instead.
+
+**Launching Jarvis hands-free:** `clap-launcher.js` is a small *separate* background script
+(not part of the main app — it has to be separate, since the whole point is starting Jarvis
+when it isn't running yet) that listens locally for a clap and launches the app. Nothing is
+recorded or sent anywhere; it's pure local audio-level analysis. Run `npm install mic` once,
+then `node clap-launcher.js` to start listening (leave it running, or set it as a login item
+yourself — that OS-specific step isn't done here). I tested its detection *logic* against
+synthetic signals (`node clap-launcher.js --self-test`) since this sandbox has no real
+microphone to clap in front of — the thresholds are a reasonable starting point, not
+verified-in-a-real-room tuning.
+
+**On "daddy's home" as a spoken launch phrase — deliberately not built as described.** Detecting
+one specific phrase from continuous background audio needs either (a) constant cloud
+transcription of everything said near the mic, all day, which is a real ongoing cost and a real
+privacy shift from everything else here (which only listens once you've opened the app), or
+(b) a dedicated local wake-word engine (Picovoice/Porcupine is the standard one), which needs
+its own free account and training the exact phrase yourself in their console — not something I
+can do on your behalf. Happy to wire up the Porcupine integration if you set up that account;
+just didn't want to quietly build the always-listening cloud version instead.
 
 ## Setup
 
@@ -73,35 +99,39 @@ can't leak through dev tools or a compromised page.
 - Real speech-to-speech: continuous mic listening → Claude → ElevenLabs voice → played back,
   with the mic muted while Jarvis is talking so he doesn't hear himself
 - **Voice-activity detection**: Jarvis notices when you start talking and begins the
-  conversation automatically — no click required
+  conversation automatically — no click required, gated by saying "Jarvis" once per conversation
 - **Desktop control that's actually wired in, not just described**:
   - `launch_app` — opens apps you've explicitly allow-listed in `config.json`
   - `open_website` — opens a URL in your default browser
   - `fetch_webpage` — reads and summarizes a specific page you give him a link to (this is
     *not* a search engine — he can't look things up without a URL, only read a page you name)
+  - `web_search` — free, keyless general search via DuckDuckGo's instant-answer service;
+    good for factual/infobox-style questions, not a full search engine
   - `organize_files` — lists, moves, or renames files, but **only** inside folders listed in
     `organizableFolders`, and it will **never delete anything**
   - `media_control` / `get_now_playing` — best-effort play/pause/skip and track info.
     Reliable on macOS with Spotify or Music open; play/pause/skip work on Windows via the
     OS media-key signal; Linux needs `playerctl` installed. "What's playing" isn't available
     on Windows yet.
-  - `start_screen_recording` / `stop_screen_recording` — captures your screen via the OS
-    picker and saves a `.webm` to `~/JarvisRecordings`. **Caveat worth testing**: Chromium
-    normally requires a recent click/keypress before it'll open the screen-share picker.
-    Since this is triggered by voice, it's possible the OS blocks it if there's been no
-    recent physical interaction — if it doesn't work by voice alone, that's a real platform
-    constraint, not a bug, and clicking the ring right before asking may be the workaround.
+  - `start_screen_recording` / `stop_screen_recording` — captures your screen via
+    `desktopCapturer` (not `getDisplayMedia`), specifically so voice can trigger it without
+    a prior click. macOS will still ask you to grant Screen Recording permission once in
+    System Settings > Privacy — that's an OS-level gate no code can skip.
+- **School mode** (Ctrl+Enter) — docks the window to a slim side panel, text-only, no voice
+- **Ask Jarvis anywhere** (Ctrl+Shift+J) — captures selected text from any app, pops open a
+  small chat window already answering about it
 - A standing "prefer free" rule in his personality: free options get used automatically;
   anything paid he doesn't already have a key for gets asked about first.
 
 ## Not built yet
-- Packaging into a true one-click installer (.exe / .dmg with no setup steps) — the
-  launchers above remove the terminal step, but `npm install` and adding your API keys
-  are still one-time manual steps
-- School mode (Ctrl+Enter sidebar)
-- General web search (only reading a specific URL is wired in — search needs a paid API key)
+- Packaging into a one-click installer (.exe / .dmg) — right now this runs via `npm start`
+- A literal entry in the native OS right-click menu — needs platform-native extensions
+  (macOS Services, Windows shell extensions) Electron can't build; the hotkey popup above
+  is the real substitute
 - Speaker-specific voice recognition — voice detection reacts to any sufficiently loud
-  voice/sound, not specifically yours
+  voice/sound (gated by saying "Jarvis" once per conversation), not a verified voiceprint
+- A spoken wake phrase for hands-free launch ("daddy's home") — see the honest explanation
+  above; clap-launcher.js is the free/local alternative that's actually built
 
 ## Repo
 Full history and the earlier web-preview version: https://github.com/HamzaR164/jarvis

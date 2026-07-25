@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, ipcMain, shell, globalShortcut } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, shell, globalShortcut, desktopCapturer } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -116,10 +116,11 @@ function baseSystemPrompt() {
     "Your replies are converted to speech and spoken aloud, so write the way a person talks: no markdown, no " +
     "bullet points, no headers, no asterisks — just natural spoken sentences. Keep answers concise. " +
     appsLine + " " + foldersLine + " " +
-    "fetch_webpage only works with an actual URL, not a general search engine query — if the user wants " +
-    "general web search rather than a specific page, tell them that would need a paid search API you don't " +
-    "have a key for yet, and ask before assuming they want to add one. media_control and get_now_playing are " +
-    "best-effort and vary by OS and what's open — say so plainly if one fails rather than pretending it worked. " +
+    "fetch_webpage needs an actual URL, for reading one specific page. web_search is for general queries " +
+    "when you don't have a URL — it's a free, keyless lookup (DuckDuckGo's instant-answer service), so it " +
+    "reliably answers factual/infobox-style questions but isn't a full general search engine; say so plainly " +
+    "if it comes back empty rather than guessing. media_control and get_now_playing are best-effort and vary " +
+    "by OS and what's open — say so plainly if one fails rather than pretending it worked. " +
     "Prefer things you can already do for free with what you have access to right now. If a request would need " +
     "a new paid API or service you don't already have a key for, tell the user plainly which paid option you'd " +
     "use and ask permission before doing anything that would cost money — never assume that permission.";
@@ -152,6 +153,16 @@ const FETCH_WEBPAGE_TOOL = {
     type: 'object',
     properties: { url: { type: 'string', description: 'Full URL including https://' } },
     required: ['url']
+  }
+};
+
+const WEB_SEARCH_TOOL = {
+  name: 'web_search',
+  description: "Search the web for general information when you don't have a specific URL. Free, no API key — uses DuckDuckGo's instant-answer service, so it's reliable for factual/infobox-style questions but not a full general search engine.",
+  input_schema: {
+    type: 'object',
+    properties: { query: { type: 'string', description: 'The search query' } },
+    required: ['query']
   }
 };
 
@@ -205,7 +216,7 @@ const STOP_RECORDING_TOOL = {
 };
 
 const ALL_TOOLS = [
-  LAUNCH_APP_TOOL, OPEN_WEBSITE_TOOL, FETCH_WEBPAGE_TOOL, MEDIA_CONTROL_TOOL,
+  LAUNCH_APP_TOOL, OPEN_WEBSITE_TOOL, FETCH_WEBPAGE_TOOL, WEB_SEARCH_TOOL, MEDIA_CONTROL_TOOL,
   NOW_PLAYING_TOOL, ORGANIZE_FILES_TOOL, SYSTEM_STATS_TOOL, START_RECORDING_TOOL, STOP_RECORDING_TOOL
 ];
 
@@ -257,6 +268,22 @@ async function fetchWebpage(url) {
     const html = await res.text();
     const text = htmlToText(html).slice(0, 6000);
     return { ok: true, text: text || '(page had no readable text content)' };
+  } catch (e) {
+    return { ok: false, error: String(e.message || e) };
+  }
+}
+
+async function webSearch(query) {
+  try {
+    const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
+    const res = await fetch(url);
+    if (!res.ok) return { ok: false, error: `Search failed (HTTP ${res.status}).` };
+    const data = await res.json();
+    const parts = [data.Answer, data.AbstractText, ...((data.RelatedTopics || []).slice(0, 4).map((t) => t.Text))].filter(Boolean);
+    if (!parts.length) {
+      return { ok: false, error: "No direct answer found — this free search only covers factual/infobox-style queries, not full general results." };
+    }
+    return { ok: true, text: parts.join('\n').slice(0, 1200) };
   } catch (e) {
     return { ok: false, error: String(e.message || e) };
   }
@@ -411,6 +438,16 @@ ipcMain.handle('get-system-stats', async () => getSystemStats());
 ipcMain.handle('transcribe', async (event, base64Audio) => transcribeAudio(base64Audio));
 ipcMain.on('state-changed', (event, state) => setTrayState(state));
 
+ipcMain.handle('get-screen-source', async () => {
+  try {
+    const sources = await desktopCapturer.getSources({ types: ['screen'] });
+    if (!sources.length) return { ok: false, error: 'No screen source available on this system.' };
+    return { ok: true, sourceId: sources[0].id };
+  } catch (e) {
+    return { ok: false, error: String(e.message || e) };
+  }
+});
+
 ipcMain.handle('ask-jarvis', async (event, { text }) => {
   if (!config || !config.anthropicApiKey) {
     return { error: 'Missing anthropicApiKey in config.json — copy config.example.json to config.json and fill it in.' };
@@ -443,6 +480,11 @@ ipcMain.handle('ask-jarvis', async (event, { text }) => {
           toolResultText = r.ok ? r.text : `Could not fetch that page: ${r.error}`;
           break;
         }
+        case 'web_search': {
+          const r = await webSearch(toolUse.input.query);
+          toolResultText = r.ok ? r.text : r.error;
+          break;
+        }
         case 'media_control': {
           const r = await mediaControl(toolUse.input.action);
           toolResultText = r.ok ? `Sent ${toolUse.input.action}.` : r.error;
@@ -465,7 +507,7 @@ ipcMain.handle('ask-jarvis', async (event, { text }) => {
         }
         case 'start_screen_recording': {
           if (win) win.webContents.send('trigger-start-recording');
-          toolResultText = 'Requested a screen recording start — the OS may ask for a screen/window to share.';
+          toolResultText = 'Requested a screen recording start.';
           break;
         }
         case 'stop_screen_recording': {

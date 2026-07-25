@@ -5,6 +5,26 @@ const os = require('os');
 const { spawn } = require('child_process');
 const execAsync = require('util').promisify(require('child_process').exec);
 
+// Every external call in this file goes through this instead of raw fetch(). Without a
+// timeout, a stuck/slow connection just hangs forever with no error - which shows up to
+// the user as "thinking" that never resolves. This turns that into a real, visible error
+// after a reasonable wait instead of silence.
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...(options || {}), signal: controller.signal });
+    clearTimeout(timer);
+    return res;
+  } catch (e) {
+    clearTimeout(timer);
+    if (e.name === 'AbortError') {
+      throw new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s - check your internet connection`);
+    }
+    throw e;
+  }
+}
+
 let config = null;
 let win = null;
 let tray = null;
@@ -304,7 +324,7 @@ const ALL_TOOLS = [
 ];
 
 async function callClaude(messages, system) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -312,7 +332,7 @@ async function callClaude(messages, system) {
       'anthropic-version': '2023-06-01'
     },
     body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 700, system, messages, tools: ALL_TOOLS })
-  });
+  }, 30000);
   return res.json();
 }
 
@@ -346,7 +366,7 @@ function htmlToText(html) {
 
 async function fetchWebpage(url) {
   try {
-    const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (JarvisAssistant)' } });
+    const res = await fetchWithTimeout(url, { headers: { 'User-Agent': 'Mozilla/5.0 (JarvisAssistant)' } }, 15000);
     if (!res.ok) return { ok: false, error: `Got HTTP ${res.status} fetching that page.` };
     const html = await res.text();
     const text = htmlToText(html).slice(0, 6000);
@@ -359,7 +379,7 @@ async function fetchWebpage(url) {
 async function webSearch(query) {
   try {
     const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
-    const res = await fetch(url);
+    const res = await fetchWithTimeout(url, {}, 10000);
     if (!res.ok) return { ok: false, error: `Search failed (HTTP ${res.status}).` };
     const data = await res.json();
     const parts = [data.Answer, data.AbstractText, ...((data.RelatedTopics || []).slice(0, 4).map((t) => t.Text))].filter(Boolean);
@@ -500,11 +520,11 @@ async function transcribeAudio(base64Audio) {
     const form = new FormData();
     form.append('model_id', 'scribe_v2');
     form.append('file', new Blob([buf], { type: 'audio/webm' }), 'audio.webm');
-    const res = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
+    const res = await fetchWithTimeout('https://api.elevenlabs.io/v1/speech-to-text', {
       method: 'POST',
       headers: { 'xi-api-key': config.elevenLabsApiKey },
       body: form
-    });
+    }, 20000);
     if (!res.ok) {
       const errText = await res.text();
       return { ok: false, error: `Transcription failed (${res.status}): ${errText.slice(0, 200)}` };
@@ -619,11 +639,11 @@ ipcMain.handle('ask-jarvis', async (event, { text, speak }) => {
 async function synthesize(text) {
   try {
     const voiceId = config.elevenLabsVoiceId || 'onwK4e9ZLuTAKqWW03F9';
-    const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+    const res = await fetchWithTimeout(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'xi-api-key': config.elevenLabsApiKey },
       body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2', voice_settings: { stability: 0.55, similarity_boost: 0.75 } })
-    });
+    }, 20000);
     if (!res.ok) { console.error('ElevenLabs TTS failed:', res.status, await res.text()); return null; }
     const buf = Buffer.from(await res.arrayBuffer());
     return 'data:audio/mpeg;base64,' + buf.toString('base64');
@@ -637,7 +657,7 @@ ipcMain.handle('get-weather', async () => {
   const w = (config && config.weather) || { lat: 30.0444, lon: 31.2357, label: 'Cairo' };
   try {
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${w.lat}&longitude=${w.lon}&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min&timezone=auto`;
-    const res = await fetch(url);
+    const res = await fetchWithTimeout(url, {}, 10000);
     const data = await res.json();
     return {
       label: w.label,

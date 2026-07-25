@@ -134,6 +134,7 @@ loadStats(); setInterval(loadStats, 5000);
 function setAvatarState(state, label){
   document.getElementById('avatar').dataset.state = state;
   document.getElementById('avatarState').textContent = label || state;
+  try{ window.jarvis.notifyState(state); }catch(e){}
 }
 function caption(text){
   const c = document.getElementById('caption');

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, ipcMain, shell, globalShortcut, desktopCapturer } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, shell, globalShortcut, desktopCapturer, clipboard, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -81,10 +81,91 @@ function setTrayState(state) {
   tray.setToolTip('Jarvis — ' + state);
 }
 
+let schoolMode = false;
+let normalBounds = null;
+
+function toggleSchoolMode() {
+  if (!win) return;
+  schoolMode = !schoolMode;
+  if (schoolMode) {
+    normalBounds = win.getBounds();
+    const display = screen.getPrimaryDisplay();
+    const width = 340;
+    win.setAlwaysOnTop(true, 'floating');
+    win.setBounds({
+      x: display.workArea.x + display.workArea.width - width,
+      y: display.workArea.y,
+      width,
+      height: display.workArea.height
+    });
+  } else {
+    win.setAlwaysOnTop(false);
+    if (normalBounds) win.setBounds(normalBounds);
+  }
+  if (!win.isVisible()) win.show();
+  win.focus();
+  win.webContents.send('school-mode-changed', schoolMode);
+}
+
+let popupWin = null;
+
+async function simulateCopy() {
+  const platform = process.platform;
+  try {
+    if (platform === 'darwin') {
+      await execAsync(`osascript -e 'tell application "System Events" to keystroke "c" using command down'`);
+    } else if (platform === 'win32') {
+      await execAsync(`powershell -command "$w = New-Object -ComObject WScript.Shell; $w.SendKeys('^c')"`);
+    } else {
+      await execAsync(`xdotool key ctrl+c`);
+    }
+    return true;
+  } catch (e) {
+    console.error('simulateCopy failed (needs xdotool on Linux):', e.message);
+    return false;
+  }
+}
+
+async function openAskPopup() {
+  await simulateCopy();
+  await new Promise((r) => setTimeout(r, 180)); // give the OS a moment to update the clipboard
+  const selectedText = clipboard.readText() || '';
+
+  if (!popupWin || popupWin.isDestroyed()) {
+    popupWin = new BrowserWindow({
+      width: 420,
+      height: 480,
+      minWidth: 320,
+      minHeight: 320,
+      backgroundColor: '#05070d',
+      alwaysOnTop: true,
+      title: 'Ask Jarvis',
+      icon: path.join(__dirname, 'assets', 'icon.png'),
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false
+      }
+    });
+    popupWin.loadFile('ask-popup.html');
+  } else {
+    popupWin.show();
+    popupWin.focus();
+  }
+  popupWin.webContents.once('did-finish-load', () => {
+    popupWin.webContents.send('popup-selected-text', selectedText);
+  });
+  if (!popupWin.webContents.isLoadingMainFrame()) {
+    popupWin.webContents.send('popup-selected-text', selectedText);
+  }
+}
+
 app.whenReady().then(() => {
   config = loadConfig();
   createWindow();
   createTray();
+  globalShortcut.register('CommandOrControl+Enter', toggleSchoolMode);
+  globalShortcut.register('CommandOrControl+Shift+J', openAskPopup);
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -448,7 +529,7 @@ ipcMain.handle('get-screen-source', async () => {
   }
 });
 
-ipcMain.handle('ask-jarvis', async (event, { text }) => {
+ipcMain.handle('ask-jarvis', async (event, { text, speak }) => {
   if (!config || !config.anthropicApiKey) {
     return { error: 'Missing anthropicApiKey in config.json — copy config.example.json to config.json and fill it in.' };
   }
@@ -526,7 +607,7 @@ ipcMain.handle('ask-jarvis', async (event, { text }) => {
 
     const block = (data.content || []).find((b) => b.type === 'text');
     const replyText = block ? block.text : 'Static on the line — say that again?';
-    const audioDataUrl = config.elevenLabsApiKey ? await synthesize(replyText) : null;
+    const audioDataUrl = (speak !== false && config.elevenLabsApiKey) ? await synthesize(replyText) : null;
     return { replyText, audioDataUrl };
   } catch (e) {
     return { error: String(e.message || e) };
